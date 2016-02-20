@@ -2,30 +2,27 @@ package com.yijieshen.sql.bench.tpch
 
 import scala.sys.process._
 
-import org.apache.spark.Logging
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, Row, SQLContext}
 import org.apache.spark.sql.types._
 
-/**
-  * Adapted From com.databricks.spark.sql.perf.tpcds.Tables
- *
-  * @param sqlContext
-  * @param dbgenDir the dbgen tool's dir, should exist on each worker
-  * @param scaleFactor
-  */
-class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends Serializable with Logging {
+// TODO dbgen should output directly to stdout instead of file
+class Tables(sqlContext: SQLContext) extends Serializable {
   import sqlContext.implicits._
 
-  def sparkContext = sqlContext.sparkContext
-  val dbgen = s"$dbgenDir/dbgen"
+  var dbgenDir: String = _ // the dbgen tool's dir, should exist on each worker
+  var scaleFactor: Int = 0
 
-  case class Table(name: String, nameAlias: String, partitionColumns: Seq[String], fields: StructField*) {
+  lazy val dbgen = s"$dbgenDir/dbgen"
+
+  def sparkContext = sqlContext.sparkContext
+
+  case class Table(name: String, nameAlias: String, parallelGen: Boolean, partitionColumns: Seq[String], fields: StructField*) {
     val schema = StructType(fields)
-    val partitions = if (partitionColumns.isEmpty) 1 else 100
+    val pd = if (parallelGen) 100 else 1  // degree of parallelism
 
     def nonPartitioned: Table = {
-      Table(name, nameAlias, Nil, fields : _*)
+      Table(name, nameAlias, parallelGen, Nil, fields : _*)
     }
 
     /**
@@ -34,7 +31,7 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       */
     def df(convertToSchema: Boolean) = {
       val generatedData = {
-        sparkContext.parallelize(1 to partitions, partitions).flatMap { i =>
+        sparkContext.parallelize(1 to pd, pd).flatMap { i =>
           val localToolsDir = if (new java.io.File(dbgen).exists) {
             dbgenDir
           } else if (new java.io.File(s"/$dbgen").exists) {
@@ -43,8 +40,8 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
             sys.error(s"Could not find dbgen at $dbgen or /$dbgen. Run install")
           }
 
-          val parallel = if (partitions > 1) s"-C $partitions -S $i" else ""
-          val fileName = if (partitions > 1) s"$name.tbl.$i" else ""
+          val parallel = if (pd > 1) s"-C $pd -S $i" else ""
+          val fileName = if (pd > 1) s"$name.tbl.$i" else s"$name.tbl"
           val commands = Seq(
             "bash", "-c",
             s"cd $localToolsDir && ./dbgen -f -T $nameAlias -s $scaleFactor $parallel && cat $fileName")
@@ -101,7 +98,7 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
         field.copy(dataType = newDataType)
       }
 
-      Table(name, nameAlias, partitionColumns, newFields:_*)
+      Table(name, nameAlias, parallelGen, partitionColumns, newFields:_*)
     }
 
     def genData(
@@ -140,41 +137,43 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
             """.stripMargin
           val grouped = sqlContext.sql(query)
           println(s"Pre-clustering with partitioning columns with query $query.")
-          logInfo(s"Pre-clustering with partitioning columns with query $query.")
           grouped.write
         } else {
           data.write
         }
       } else {
         // If the table is not partitioned, coalesce the data to a single file.
-        data.coalesce(1).write
+        data.write
       }
       writer.format(format).mode(mode)
       if (partitionColumns.nonEmpty) {
         writer.partitionBy(partitionColumns : _*)
       }
       println(s"Generating table $name in database to $location with save mode $mode.")
-      logInfo(s"Generating table $name in database to $location with save mode $mode.")
       writer.save(location)
       sqlContext.dropTempTable(tempTableName)
     }
 
     def createTemporaryTable(location: String, format: String): Unit = {
       println(s"Creating temporary table $name using data stored in $location.")
-      logInfo(s"Creating temporary table $name using data stored in $location.")
       sqlContext.read.format(format).load(location).registerTempTable(name)
     }
   }
 
   def genData(
-    location: String,
-    format: String,
-    overwrite: Boolean,
-    partitionTables: Boolean,
-    useDoubleForDecimal: Boolean,
-    clusterByPartitionColumns: Boolean,
-    filterOutNullPartitionValues: Boolean,
-    tableFilter: String = ""): Unit = {
+      dbgenDir: String,
+      scaleFactor: Int,
+      location: String,
+      format: String,
+      overwrite: Boolean,
+      partitionTables: Boolean,
+      useDoubleForDecimal: Boolean,
+      clusterByPartitionColumns: Boolean,
+      filterOutNullPartitionValues: Boolean,
+      tableFilter: String = ""): Unit = {
+    this.dbgenDir = dbgenDir
+    this.scaleFactor = scaleFactor
+
     var tablesToBeGenerated = if (partitionTables) {
       tables
     } else {
@@ -213,11 +212,11 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
     }
   }
 
-  // TODO distributed by which col?
+  // TODO partition by which col?
   // TODO date type instead of string?
   val tables = Seq(
-    Table("lineitem", "L",
-      partitionColumns = "l_orderkey" :: Nil,
+    Table("lineitem", "L", true,
+      partitionColumns = Nil,
       'l_orderkey             .long,
       'l_partkey              .int,
       'l_suppkey              .int,
@@ -234,8 +233,8 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       'l_shipinstruct         .string,
       'l_shipmode             .string,
       'l_comment              .string),
-    Table("orders", "O",
-      partitionColumns = "o_orderkey" :: Nil,
+    Table("orders", "O", true,
+      partitionColumns = Nil,
       'o_orderkey             .long,
       'o_custkey              .int,
       'o_orderstatus          .string,
@@ -245,15 +244,15 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       'o_clerk                .string,
       'o_shippriority         .int,
       'o_comment              .string),
-    Table("partsupp", "S",
-      partitionColumns = "ps_partkey" :: "ps_suppkey" :: Nil,
+    Table("partsupp", "S", true,
+      partitionColumns = Nil,
       'ps_partkey             .int,
       'ps_suppkey             .int,
       'ps_availqty            .int,
       'ps_supplycost          .double,
       'ps_comment             .string),
-    Table("customer", "c",
-      partitionColumns = "c_custkey" :: Nil,
+    Table("customer", "c", true,
+      partitionColumns = Nil,
       'c_custkey              .int,
       'c_name                 .string,
       'c_address              .string,
@@ -262,8 +261,8 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       'c_acctbal              .double,
       'c_mktsegment           .string,
       'c_comment              .string),
-    Table("part", "P",
-      partitionColumns = "p_partkey" :: Nil,
+    Table("part", "P", true,
+      partitionColumns = Nil,
       'p_partkey              .int,
       'p_name                 .string,
       'p_mfgr                 .string,
@@ -273,8 +272,8 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       'p_container            .string,
       'p_retailprice          .double,
       'p_comment              .string),
-    Table("supplier", "s",
-      partitionColumns = "supplier" :: Nil,
+    Table("supplier", "s", true,
+      partitionColumns = Nil,
       's_suppkey              .int,
       's_name                 .string,
       's_address              .string,
@@ -282,13 +281,13 @@ class Tables(sqlContext: SQLContext, dbgenDir: String, scaleFactor: Int) extends
       's_phone                .string,
       's_acctbal              .double,
       's_comment              .string),
-    Table("nation", "n",
+    Table("nation", "n", false,
       partitionColumns = Nil,
       'n_nationkey            .int,
       'n_name                 .string,
       'n_regionkey            .int,
       'n_comment              .string),
-    Table("region", "r",
+    Table("region", "r", false,
       partitionColumns = Nil,
       'r_regionkey            .int,
       'r_name                 .string,
