@@ -82,7 +82,7 @@ case class Q3(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
 case class Q4(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
   import sqlContext.implicits._
 
-  lazy val ord = orders.filter('o_orderdate >= "1993-07-01" && 'o_orderdate < "1993-10-01")
+  lazy val ord = orders.filter('o_orderdate.between("1993-07-01", "1993-09-30"))
   lazy val li = lineitem.filter('l_commitdate < 'l_receiptdate).select('l_orderkey).distinct
 
   def result =
@@ -95,7 +95,7 @@ case class Q4(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
 case class Q5(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
   import sqlContext.implicits._
 
-  lazy val ord = orders.filter('o_orderdate < "1995-01-01" && 'o_orderdate >= "1994-01-01")
+  lazy val ord = orders.filter('o_orderdate.between("1994-01-01", "1994-12-31"))
 
   def result =
     region.filter('r_name === "ASIA")
@@ -128,7 +128,7 @@ case class Q7(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
   import sqlContext.implicits._
 
   lazy val na = nation.filter('n_name === "FRANCE" || 'n_name === "GERMANY")
-  lazy val li = lineitem.filter('l_shipdate >= "1995-01-01" && 'l_shipdate <= "1996-12-31")
+  lazy val li = lineitem.filter('l_shipdate.between("1995-01-01", "1996-12-31"))
 
   lazy val sp_na =
     na.join(supplier, 'n_nationkey === 's_nationkey)
@@ -146,7 +146,7 @@ case class Q7(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .select(
         'supp_nation,
         'cust_nation,
-        substring('l_shipdate, 0, 4).as("l_year"),
+        'l_shipdate.substr(0, 4).as("l_year"),
         ('l_extendedprice * (lit(1) - $"l_discount")).as("volume"))
       .groupBy('supp_nation, 'cust_nation, 'l_year)
       .agg(sum('volume).as("revenue"))
@@ -170,7 +170,7 @@ case class Q8(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .join(cust_na_reg, 'o_custkey === 'c_custkey)
       .join(supp_na, 'l_suppkey === 's_suppkey)
       .select(
-        substring('o_orderdate, 0, 4).as("o_year"),
+        'o_orderdate.substr(0, 4).as("o_year"),
         ('l_extendedprice * (lit(1) - 'l_discount)).as("volume"),
         supp_na("n_name").as("nation"))
 
@@ -195,7 +195,7 @@ case class Q9(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .join(nation, 's_nationkey === 'n_nationkey)
       .select(
         'n_name,
-        substring('o_orderdate, 0, 4).as("o_year"),
+        'o_orderdate.substr(0, 4).as("o_year"),
         ('l_extendedprice * (lit(1) - 'l_discount) - 'ps_supplycost * 'l_quantity).as("amount"))
       .groupBy('n_name, 'o_year)
       .agg(sum('amount))

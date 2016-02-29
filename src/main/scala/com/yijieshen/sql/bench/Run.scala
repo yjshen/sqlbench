@@ -89,6 +89,8 @@ object Run {
       import sqlContext.implicits._
 
       sqlContext.setConf("spark.sql.shuffle.partitions", "1")
+      sqlContext.setConf("spark.sql.vectorize.enabled", "false")
+      sqlContext.setConf("spark.sql.vectorize.agg.enabled", "false")
       status.getCurrentRuns()
         .withColumn("result", explode($"results"))
         .select("result.*")

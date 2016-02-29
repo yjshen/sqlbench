@@ -75,7 +75,11 @@ class Query(
             messages += s"Breakdown: ${node.simpleString}"
             val newNode = buildDataFrame.queryExecution.executedPlan(index)
             val executionTime = measureTimeMs {
-              newNode.execute().foreach((row: Any) => Unit)
+              if (newNode.outputRowBatches) {
+                newNode.batchExecute().foreach((batch: Any) => Unit)
+              } else {
+                newNode.execute().foreach((row: Any) => Unit)
+              }
             }
             timeMap += ((index, executionTime))
 
