@@ -1,5 +1,7 @@
 package com.yijieshen.sql.bench
 
+import scala.sys.process._
+
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
@@ -74,6 +76,15 @@ class Query(
           case (index, node) =>
             messages += s"Breakdown: ${node.simpleString}"
             val newNode = buildDataFrame.queryExecution.executedPlan(index)
+
+            if (new java.io.File("/home/netflow/free_memory.sh").exists) {
+              val commands = Seq("bash", "-c", s"/home/netflow/free_memory.sh")
+              commands.!!
+              System.err.println("free_memory succeed")
+            } else {
+              System.err.println("free_memory script doesn't exists")
+            }
+
             val executionTime = measureTimeMs {
               if (newNode.outputRowBatches) {
                 newNode.batchExecute().foreach((batch: Any) => Unit)

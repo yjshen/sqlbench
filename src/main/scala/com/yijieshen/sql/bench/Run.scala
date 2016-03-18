@@ -26,10 +26,10 @@ object Run {
         .validate { x =>
           try {
             val qs = x.split(',').map(_.toInt)
-            if (qs.forall(i => i >= 1 && i <= 22)) {
+            if (qs.forall(i => i >= 1 && i <= 50)) {
               success
             } else {
-              failure("query num should in [1, 22]")
+              failure("query num should in [1, 50]")
             }
           } catch {
             case e: NumberFormatException => sys.error("query num should be int seperated by comma")

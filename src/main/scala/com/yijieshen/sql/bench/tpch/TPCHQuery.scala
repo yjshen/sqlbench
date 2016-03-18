@@ -36,6 +36,49 @@ case class Q1(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .sort('l_returnflag, 'l_linestatus)
 }
 
+// Q1 alias with filter only
+case class Q23(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
+  import sqlContext.implicits._
+
+  def result =
+    lineitem.filter('l_shipdate <= "1998-09-02")
+      .select('l_returnflag, 'l_linestatus).distinct()
+      .sort('l_returnflag, 'l_linestatus)
+}
+
+// Q1 with simplified aggregation
+case class Q25(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
+  import sqlContext.implicits._
+
+  def result =
+    lineitem.filter('l_shipdate <= "1998-09-02")
+      .groupBy('l_returnflag, 'l_linestatus)
+      .agg(
+        sum('l_quantity),
+        sum('l_extendedprice),
+        sum('l_discount),
+        sum('l_tax),
+        count(lit(1)))
+      .sort('l_returnflag, 'l_linestatus)
+}
+
+// Q1 aggregate without grouping
+case class Q26(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
+  import sqlContext.implicits._
+
+  def result =
+    lineitem.filter('l_shipdate <= "1998-09-02")
+      .agg(
+        sum('l_quantity),
+        sum('l_extendedprice),
+        sum('l_extendedprice * (lit(1) - 'l_discount)),
+        sum('l_extendedprice * (lit(1) - 'l_discount) * (lit(1) + 'l_tax)),
+        avg('l_quantity),
+        avg('l_extendedprice),
+        avg('l_discount),
+        count(lit(1)))
+}
+
 case class Q2(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
   import sqlContext.implicits._
 
@@ -436,13 +479,37 @@ case class Q22(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .sort('cntrycode)
 }
 
+// Q6 alias with complex aggregations
+case class Q24(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
+
+  import sqlContext.implicits._
+
+  def result =
+    lineitem.filter(
+      'l_shipdate >= "1994-01-01" &&
+        'l_shipdate < "1995-01-01" &&
+        'l_discount >= 0.05 &&
+        'l_discount <= 0.07 &&
+        'l_quantity < 24)
+      .agg(
+        sum('l_quantity),
+        sum('l_extendedprice),
+        sum('l_extendedprice * (lit(1) - 'l_discount)),
+        sum('l_extendedprice * (lit(1) - 'l_discount) * (lit(1) + 'l_tax)),
+        avg('l_quantity),
+        avg('l_extendedprice),
+        avg('l_discount),
+        count(lit(1)))
+}
+
 object TPCHQuery {
   def allQueries(ctx: SQLContext): Seq[Query] = {
     val all = Q1(ctx) :: Q2(ctx) :: Q3(ctx) :: Q4(ctx) :: Q5(ctx) ::
       Q6(ctx) :: Q7(ctx) :: Q8(ctx) :: Q9(ctx) :: Q10(ctx) ::
       Q11(ctx) :: Q12(ctx) :: Q13(ctx) :: Q14(ctx) :: Q15(ctx) ::
       Q16(ctx) :: Q17(ctx) :: Q18(ctx) :: Q19(ctx) :: Q20(ctx) ::
-      Q21(ctx) :: Q22(ctx) :: Nil
+      Q21(ctx) :: Q22(ctx) ::
+      Q23(ctx) :: Q24(ctx) :: Q25(ctx) :: Q26(ctx) :: Nil
     all.map(q => Query(q.getClass.getSimpleName, q.result, "TPCH Query"))
   }
 
