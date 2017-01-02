@@ -68,7 +68,7 @@ class Query(
 
       val breakdownResults = if (includeBreakdown) {
         val depth = queryExecution.executedPlan.collect { case p: SparkPlan => p }.size
-        val physicalOperators = (0 until depth).map(i => (i, queryExecution.executedPlan(i)))
+        val physicalOperators = (0 until depth).map(i => (i, queryExecution.executedPlan(i))).filter(case (i: Int, p: SparkPlan) => p.shouldReuseRowBatch)
         val indexMap = physicalOperators.map { case (index, op) => (op, index) }.toMap
         val timeMap = new scala.collection.mutable.HashMap[Int, Double]
 
@@ -86,7 +86,7 @@ class Query(
             }
 
             val executionTime = measureTimeMs {
-              if (newNode.outputRowBatches) {
+              if (newNode.outputsRowBatches) {
                 newNode.batchExecute().foreach((batch: Any) => Unit)
               } else {
                 newNode.execute().foreach((row: Any) => Unit)
@@ -157,7 +157,7 @@ class Query(
         BenchmarkResult(
           name = name,
           mode = executionMode.toString,
-          failure = Failure(e.getClass.getName, e.getMessage))
+          failure = Failure(e.getClass.getName, e.getMessage, e.getStackTraceString))
     }
   }
 

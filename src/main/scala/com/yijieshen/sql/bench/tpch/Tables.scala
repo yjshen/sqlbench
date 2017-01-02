@@ -155,7 +155,7 @@ class Tables(sqlContext: SQLContext) extends Serializable {
     }
 
     def createTemporaryTable(location: String, format: String): Unit = {
-      println(s"Creating temporary table $name using data stored in $location.")
+      // println(s"Creating temporary table $name using data stored in $location.")
       sqlContext.read.format(format).load(location).registerTempTable(name)
     }
   }

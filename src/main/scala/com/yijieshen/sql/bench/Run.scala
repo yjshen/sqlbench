@@ -70,7 +70,7 @@ object Run {
   }
 
   def run(config: RunConfig): Unit = {
-    val conf = new SparkConf().setAppName(getClass.getName)
+    val conf = new SparkConf().setAppName(s"Query_${config.queries.get}")
     val sc = SparkContext.getOrCreate(conf)
     val sqlContext = new HiveContext(sc)
 
@@ -91,7 +91,12 @@ object Run {
       sqlContext.setConf("spark.sql.shuffle.partitions", "1")
       sqlContext.setConf("spark.sql.vectorize.enabled", "false")
       sqlContext.setConf("spark.sql.vectorize.agg.enabled", "false")
-      status.getCurrentRuns()
+      sqlContext.setConf("spark.sql.vectorize.sort.enabled", "false")
+      sqlContext.setConf("spark.sql.vectorize.batch.sort.enabled", "false")
+      sqlContext.setConf("spark.sql.vectorize.shuffle.enabled", "false")
+      sqlContext.setConf("spark.sql.vectorize.bufferedShuffle.enabled", "false")
+      val current = status.getCurrentRuns()
+      current
         .withColumn("result", explode($"results"))
         .select("result.*")
         .groupBy("name")
@@ -102,6 +107,7 @@ object Run {
           stddev($"executionTime") as 'stdDev)
         .orderBy("name")
         .show(truncate = false)
+      current.withColumn("result", explode($"results")).select(explode($"result.breakDown")).select("col.nodeName", "col.executionTime").show(false)
       println(s"""Results: sqlContext.read.json("${status.resultPath}")""")
     }
   }

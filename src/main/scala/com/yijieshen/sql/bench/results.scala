@@ -80,4 +80,4 @@ case class BreakdownResult(
   executionTime: Double,
   delta: Double)
 
-case class Failure(className: String, message: String)
+case class Failure(className: String, message: String, stackTrace: String = null)

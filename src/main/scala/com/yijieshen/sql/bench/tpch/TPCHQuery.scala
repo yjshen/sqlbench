@@ -154,6 +154,20 @@ case class Q5(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
       .sort('revenue.desc)
 }
 
+case class Q27(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
+  import sqlContext.implicits._
+
+  def result =
+    region.filter('r_name === "ASIA")
+      .join(nation, 'r_regionkey === 'n_regionkey)
+      .join(supplier, 'n_nationkey === 's_nationkey)
+      .join(lineitem, 's_suppkey === 'l_suppkey)
+      .select('n_name, ('l_extendedprice * (lit(1) - 'l_discount)).as("value"))
+      .groupBy('n_name)
+      .agg(sum('value).as("revenue"))
+      .sort('revenue.desc)
+}
+
 case class Q6(sqlContext: SQLContext) extends TPCHQuery(sqlContext) {
   import sqlContext.implicits._
 
@@ -509,7 +523,7 @@ object TPCHQuery {
       Q11(ctx) :: Q12(ctx) :: Q13(ctx) :: Q14(ctx) :: Q15(ctx) ::
       Q16(ctx) :: Q17(ctx) :: Q18(ctx) :: Q19(ctx) :: Q20(ctx) ::
       Q21(ctx) :: Q22(ctx) ::
-      Q23(ctx) :: Q24(ctx) :: Q25(ctx) :: Q26(ctx) :: Nil
+      Q23(ctx) :: Q24(ctx) :: Q25(ctx) :: Q26(ctx) :: Q27(ctx) :: Nil
     all.map(q => Query(q.getClass.getSimpleName, q.result, "TPCH Query"))
   }
 
