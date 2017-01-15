@@ -68,11 +68,11 @@ class Query(
 
       val breakdownResults = if (includeBreakdown) {
         val depth = queryExecution.executedPlan.collect { case p: SparkPlan => p }.size
-        val physicalOperators = (0 until depth).map(i => (i, queryExecution.executedPlan(i))).filter(case (i: Int, p: SparkPlan) => p.shouldReuseRowBatch)
+        val physicalOperators = (0 until depth).map(i => (i, queryExecution.executedPlan(i)))
         val indexMap = physicalOperators.map { case (index, op) => (op, index) }.toMap
         val timeMap = new scala.collection.mutable.HashMap[Int, Double]
 
-        physicalOperators.reverse.map {
+        physicalOperators.reverse.take(1).map {
           case (index, node) =>
             messages += s"Breakdown: ${node.simpleString}"
             val newNode = buildDataFrame.queryExecution.executedPlan(index)
