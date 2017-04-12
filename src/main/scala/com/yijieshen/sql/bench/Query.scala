@@ -66,6 +66,13 @@ class Query(
         queryExecution.executedPlan
       }
 
+      // The executionTime for the entire query includes the time of type conversion from catalyst
+      // to scala.
+      // The executionTime for the entire query includes the time of type conversion
+      // from catalyst to scala.
+      var result: Option[Long] = None
+      var executionTime: Double = 0
+
       val breakdownResults = if (includeBreakdown) {
         val depth = queryExecution.executedPlan.collect { case p: SparkPlan => p }.size
         val physicalOperators = (0 until depth).map(i => (i, queryExecution.executedPlan(i)))
@@ -77,8 +84,8 @@ class Query(
             messages += s"Breakdown: ${node.simpleString}"
             val newNode = buildDataFrame.queryExecution.executedPlan(index)
 
-            if (new java.io.File("/home/netflow/free_memory.sh").exists) {
-              val commands = Seq("bash", "-c", s"/home/netflow/free_memory.sh")
+            if (new java.io.File("/home/syj/free_memory.sh").exists) {
+              val commands = Seq("bash", "-c", s"/home/syj/free_memory.sh")
               commands.!!
               System.err.println("free_memory succeed")
             } else {
@@ -108,31 +115,26 @@ class Query(
               executionTime - childTime)
         }
       } else {
-        Seq.empty[BreakdownResult]
-      }
-
-      // The executionTime for the entire query includes the time of type conversion from catalyst
-      // to scala.
-      // The executionTime for the entire query includes the time of type conversion
-      // from catalyst to scala.
-      var result: Option[Long] = None
-      val executionTime = measureTimeMs {
-        executionMode match {
-          case ExecutionMode.CollectResults => dataFrame.rdd.collect()
-          case ExecutionMode.ForeachResults => dataFrame.rdd.foreach { row => Unit }
-          case ExecutionMode.WriteParquet(location) =>
-            dataFrame.saveAsParquetFile(s"$location/$name.parquet")
-          case ExecutionMode.HashResults =>
-            val columnStr = dataFrame.schema.map(_.name).mkString(",")
-            // SELECT SUM(HASH(col1, col2, ...)) FROM (benchmark query)
-            val row =
+        executionTime = measureTimeMs {
+          executionMode match {
+            case ExecutionMode.CollectResults => dataFrame.rdd.collect()
+            case ExecutionMode.ForeachResults => dataFrame.rdd.foreach { row => Unit }
+            case ExecutionMode.WriteParquet(location) =>
+              dataFrame.saveAsParquetFile(s"$location/$name.parquet")
+            case ExecutionMode.HashResults =>
+              val columnStr = dataFrame.schema.map(_.name).mkString(",")
+              // SELECT SUM(HASH(col1, col2, ...)) FROM (benchmark query)
+              val row =
               dataFrame
                 .selectExpr(s"hash($columnStr) as hashValue")
                 .groupBy()
                 .sum("hashValue")
                 .head()
-            result = if (row.isNullAt(0)) None else Some(row.getLong(0))
+              result = if (row.isNullAt(0)) None else Some(row.getLong(0))
+          }
         }
+
+        Seq.empty[BreakdownResult]
       }
 
       val joinTypes = dataFrame.queryExecution.executedPlan.collect {
